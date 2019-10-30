@@ -1,0 +1,92 @@
+<html>
+  <head>
+  </head>
+  <body>
+    <div>Meeting room: <span id="room-id"></span></div>
+    <button id="toggleVideo">
+      Toggle
+    </button>
+
+    <video id="localVideo" controls="true" muted="">
+    </video>
+    <div id="remoteVideos">
+    </div>
+
+    <!--adapter.js is helper to insulate app from spec changes and prefix differences -->
+    <script src="https://webrtc.github.io/adapter/adapter-6.1.1.js"> </script>
+    <script src="./static/index.js" type="module"></script>
+    <script type="module">
+      import { PylonRTCSession, PylonRTCEvents} from './static/index.js'
+      // the address is signaler's address
+      // please look at https://github.com/y00rb/pylon-signaler
+      // download the code running it, the signaler server would be running in local.
+      const SIGNALER_URI = 'localhost:8383'
+
+      let addRemoteVideo = media => {
+        let video = document.createElement('video')
+        let container = document.getElementById('remoteVideos')
+        video.id = media.id
+        video.controls = true
+        video.srcObject = media
+        video.onloadedmetadata = function (e) {
+          video.play()
+        }
+        container.appendChild(video)
+      }
+      let removeRemoteVideo = media => {
+        try {
+          document.getElementById(media.id).remove()
+        } catch (e) {
+          console.log('User left room that did not have a media session')
+        }
+      }
+      navigator.getUserMedia({
+        video: true,
+        audio: true
+      },
+      function(localMediaStream) {
+        let localVideo = document.getElementById('localVideo')
+        localVideo.srcObject = localMediaStream
+        localVideo.onloadedmetadata = function(e) {
+          localVideo.play()
+        }
+        const sessionParams = document.location.search
+        let pylonRTCSession = new PylonRTCSession(SIGNALER_URI, sessionParams, {
+
+          mandatory: {OfferToReceiveVideo: true, OfferToReceiveAudio: true}
+        })
+        pylonRTCSession.eventHandler = event => {
+          switch (event.type) {
+            case PylonRTCEvents.JOIN_SESSION:
+              let roomElement = document.getElementById('room-id')
+              roomElement.innerHTML = event.roomID
+              break
+            case PylonRTCEvents.MEDIA_START:
+              addRemoteVideo(event.media)
+              break
+            case PylonRTCEvents.MEDIA_STOP:
+              removeRemoteVideo(event.media)
+              break
+            default:
+              console.warn(event)
+          }
+        }
+        pylonRTCSession.start()
+        pylonRTCSession.addMedia(localMediaStream)
+        let isAdded = true
+        let mutateLoop = () => {
+          if (isAdded) {
+            pylonRTCSession.removeMedia(localMediaStream)
+          } else {
+            pylonRTCSession.addMedia(localMediaStream)
+          }
+          isAdded = !isAdded
+        }
+        document.getElementById('toggleVideo').onclick = mutateLoop
+      },
+      function(err) {
+        console.log('The following error occurred when trying to use getUserMedia: ' + err);
+      })
+    </script>
+  </body>
+</html>
